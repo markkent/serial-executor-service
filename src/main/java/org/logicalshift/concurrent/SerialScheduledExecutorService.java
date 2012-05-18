@@ -162,13 +162,13 @@ public class SerialScheduledExecutorService
         if (isShutdown) {
             throw new IllegalStateException("Trying to elapse time after shutdown");
         }
-        elapseTime(millis(quantum, timeUnit));
+        elapseTime(toMillis(quantum, timeUnit));
     }
 
     @Override
     public ScheduledFuture<?> schedule(Runnable runnable, long l, TimeUnit timeUnit)
     {
-        SerialScheduledFuture<?> future = new SerialScheduledFuture<Void>(new FutureTask<Void>(runnable, null), millis(l, timeUnit));
+        SerialScheduledFuture<?> future = new SerialScheduledFuture<Void>(new FutureTask<Void>(runnable, null), toMillis(l, timeUnit));
         tasks.add(future);
         return future;
     }
@@ -176,7 +176,7 @@ public class SerialScheduledExecutorService
     @Override
     public <V> ScheduledFuture<V> schedule(Callable<V> vCallable, long l, TimeUnit timeUnit)
     {
-        SerialScheduledFuture<V> future = new SerialScheduledFuture<V>(new FutureTask<V>(vCallable), millis(l, timeUnit));
+        SerialScheduledFuture<V> future = new SerialScheduledFuture<V>(new FutureTask<V>(vCallable), toMillis(l, timeUnit));
         tasks.add(future);
         return future;
     }
@@ -184,7 +184,7 @@ public class SerialScheduledExecutorService
     @Override
     public ScheduledFuture<?> scheduleAtFixedRate(Runnable runnable, long l, long l1, TimeUnit timeUnit)
     {
-        SerialScheduledFuture<?> future = new RecurringRunnableSerialScheduledFuture<Void>(runnable, null, millis(l, timeUnit), millis(l1, timeUnit));
+        SerialScheduledFuture<?> future = new RecurringRunnableSerialScheduledFuture<Void>(runnable, null, toMillis(l, timeUnit), toMillis(l1, timeUnit));
         tasks.add(future);
         return future;
     }
@@ -192,7 +192,7 @@ public class SerialScheduledExecutorService
     @Override
     public ScheduledFuture<?> scheduleWithFixedDelay(Runnable runnable, long l, long l1, TimeUnit timeUnit)
     {
-        SerialScheduledFuture<?> future = new RecurringRunnableSerialScheduledFuture<Void>(runnable, null, millis(l, timeUnit), millis(l1, timeUnit));
+        SerialScheduledFuture<?> future = new RecurringRunnableSerialScheduledFuture<Void>(runnable, null, toMillis(l, timeUnit), toMillis(l1, timeUnit));
         tasks.add(future);
         return future;
     }
@@ -339,8 +339,7 @@ public class SerialScheduledExecutorService
             }
 
             if (current.isDone()) {
-                // This isn't right - there shouldn't be done tasks in the queue
-                throw new IllegalStateException("Found a done task in the queue (contrary to expectation)");
+                throw new AssertionError("Found a done task in the queue (contrary to expectation)");
             }
 
             // Try to elapse the time quantum off the current item
@@ -378,7 +377,7 @@ public class SerialScheduledExecutorService
         }
     }
 
-    private static long millis(long quantum, TimeUnit timeUnit)
+    private static long toMillis(long quantum, TimeUnit timeUnit)
     {
         return TimeUnit.MILLISECONDS.convert(quantum, timeUnit);
     }
