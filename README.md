@@ -58,3 +58,5 @@ public void testFoo()
     assertEquals(foo.getCount(), 1);
     assertTrue(bar.whateverGotDone());
 }
+
+For more examples, see the unit tests provided.
