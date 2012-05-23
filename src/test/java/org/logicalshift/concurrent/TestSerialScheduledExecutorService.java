@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 public class TestSerialScheduledExecutorService
 {
@@ -35,6 +36,20 @@ public class TestSerialScheduledExecutorService
     }
 
     @Test
+    public void testThrownExceptionsAreSwallowedForRunOnceRunnable()
+            throws Exception
+    {
+        executorService.execute(new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                throw new RuntimeException("deliberate");
+            }
+        });
+    }
+
+    @Test
     public void testSubmitRunnable()
             throws Exception
     {
@@ -44,7 +59,33 @@ public class TestSerialScheduledExecutorService
         assertEquals(counter.getCount(), 1);
         assertTrue(future.isDone());
         assertFalse(future.isCancelled());
-        assertEquals((int)future.get(), 10);
+        assertEquals((int) future.get(), 10);
+    }
+
+    @Test
+    public void testThrownExceptionsArePushedIntoFutureForSubmittedRunnable()
+            throws Exception
+    {
+        Future<Integer> future = executorService.submit(new Runnable() {
+            @Override
+            public void run()
+            {
+                throw new RuntimeException("deliberate");
+            }
+        }, 10);
+
+        assertTrue(future.isDone());
+        assertFalse(future.isCancelled());
+        try {
+            future.get();
+        }
+        catch (Exception expected)
+        {
+            assertEquals(expected.getMessage(), "java.lang.RuntimeException: deliberate");
+            return;
+        }
+
+        fail("Should have received exception");
     }
 
     @Test
@@ -56,7 +97,34 @@ public class TestSerialScheduledExecutorService
 
         assertTrue(future.isDone());
         assertFalse(future.isCancelled());
-        assertEquals((int)future.get(), 1);
+        assertEquals((int) future.get(), 1);
+    }
+
+    @Test
+    public void testThrownExceptionsArePushedIntoFutureForSubmittedCallable()
+            throws Exception
+    {
+        Future<Integer> future = executorService.submit(new Callable<Integer>() {
+            @Override
+            public Integer call()
+                    throws Exception
+            {
+                throw new Exception("deliberate");
+            }
+        });
+
+        assertTrue(future.isDone());
+        assertFalse(future.isCancelled());
+        try {
+            future.get();
+        }
+        catch (Exception expected)
+        {
+            assertEquals(expected.getMessage(), "java.lang.Exception: deliberate");
+            return;
+        }
+
+        fail("Should have received exception");
     }
 
     @Test
@@ -76,6 +144,35 @@ public class TestSerialScheduledExecutorService
         assertTrue(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 1);
+    }
+
+    @Test
+    public void testThrownExceptionsArePushedIntoFutureForScheduledRunnable()
+            throws Exception
+    {
+        Future<?> future = executorService.schedule(new Runnable() {
+            @Override
+            public void run()
+            {
+                throw new RuntimeException("deliberate");
+            }
+        }, 10, TimeUnit.MINUTES);
+
+        executorService.elapseTime(10, TimeUnit.MINUTES);
+
+        assertTrue(future.isDone());
+        assertFalse(future.isCancelled());
+        boolean caught = false;
+        try {
+            future.get();
+        }
+        catch (Exception expected)
+        {
+            assertEquals(expected.getMessage(), "java.lang.RuntimeException: deliberate");
+            caught = true;
+        }
+
+        assertTrue(caught, "Should have received exception");
     }
 
     @Test
@@ -132,6 +229,37 @@ public class TestSerialScheduledExecutorService
     }
 
     @Test
+    public void testThrownExceptionsArePushedIntoFutureForScheduledCallable()
+            throws Exception
+    {
+        Future<Integer> future = executorService.schedule(new Callable<Integer>()
+        {
+            @Override
+            public Integer call()
+                    throws Exception
+            {
+                throw new Exception("deliberate");
+            }
+        }, 10, TimeUnit.MINUTES);
+
+        executorService.elapseTime(10, TimeUnit.MINUTES);
+
+        assertTrue(future.isDone());
+        assertFalse(future.isCancelled());
+        boolean caught = false;
+        try {
+            future.get();
+        }
+        catch (Exception expected)
+        {
+            assertEquals(expected.getMessage(), "java.lang.Exception: deliberate");
+            caught = true;
+        }
+
+        assertTrue(caught, "Should have received exception");
+    }
+
+    @Test
     public void testScheduledCallableWithZeroDelayCompletesImmediately()
             throws Exception
     {
@@ -142,7 +270,6 @@ public class TestSerialScheduledExecutorService
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 1);
     }
-
 
     @Test(expectedExceptions = CancellationException.class)
     public void testCancelScheduledCallable()
@@ -197,6 +324,72 @@ public class TestSerialScheduledExecutorService
         executorService.elapseTime(10, TimeUnit.MINUTES);
         assertEquals(counter.getCount(), 3);
 
+    }
+
+    @Test
+    public void testRepeatingRunnableThatThrowsDoesNotRunAgain()
+            throws Exception
+    {
+        FailingCounter counter = new FailingCounter(1);
+        ScheduledFuture<?> future = executorService.scheduleAtFixedRate(counter, 10, 5, TimeUnit.MINUTES);
+
+        executorService.elapseTime(10, TimeUnit.MINUTES);
+        assertFalse(future.isDone());
+        assertFalse(future.isCancelled());
+        assertEquals(counter.getCount(), 1);
+
+        // The runnable will throw on the second attempt
+        executorService.elapseTime(5, TimeUnit.MINUTES);
+        assertEquals(counter.getCount(), 2);
+        assertTrue(future.isDone());
+        boolean caught = false;
+        try {
+            future.get();
+        }
+        catch (Exception expected)
+        {
+            assertEquals(expected.getMessage(), "java.lang.RuntimeException: deliberate");
+            caught = true;
+        }
+
+        assertTrue(caught, "Should have received exception");
+
+        // The runnable should not execute again
+        executorService.elapseTime(20, TimeUnit.MINUTES);
+        assertEquals(counter.getCount(), 2);
+    }
+
+    @Test
+    public void testRepeatingRunnableThatThrowsDoesNotRunAgainWhenElapseContainsMultipleInvocations()
+            throws Exception
+    {
+        FailingCounter counter = new FailingCounter(1);
+        ScheduledFuture<?> future = executorService.scheduleAtFixedRate(counter, 10, 5, TimeUnit.MINUTES);
+
+        executorService.elapseTime(10, TimeUnit.MINUTES);
+        assertFalse(future.isDone());
+        assertFalse(future.isCancelled());
+        assertEquals(counter.getCount(), 1);
+
+        // The runnable will throw on the second attempt (out of three)
+        executorService.elapseTime(10, TimeUnit.MINUTES);
+        assertEquals(counter.getCount(), 2);
+        assertTrue(future.isDone());
+        boolean caught = false;
+        try {
+            future.get();
+        }
+        catch (Exception expected)
+        {
+            assertEquals(expected.getMessage(), "java.lang.RuntimeException: deliberate");
+            caught = true;
+        }
+
+        assertTrue(caught, "Should have received exception");
+
+        // The runnable should not execute again
+        executorService.elapseTime(20, TimeUnit.MINUTES);
+        assertEquals(counter.getCount(), 2);
     }
 
     @Test
@@ -319,6 +512,33 @@ public class TestSerialScheduledExecutorService
         public int getCount()
         {
             return count;
+        }
+    }
+
+    static class FailingCounter
+        implements Runnable
+    {
+        private int count = 0;
+        private final int limit;
+
+        FailingCounter(int limit)
+        {
+            this.limit = limit;
+        }
+
+        public int getCount()
+        {
+            return count;
+        }
+
+        @Override
+        public void run()
+        {
+            count++;
+
+            if (count > limit) {
+                throw new RuntimeException("deliberate");
+            }
         }
     }
 }

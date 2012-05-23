@@ -38,7 +38,12 @@ public class SerialScheduledExecutorService
     public void execute(Runnable runnable)
     {
         Preconditions.checkNotNull(runnable, "Task object is null");
-        runnable.run();
+        try {
+            runnable.run();
+        }
+        catch (Throwable ignored)
+        {
+        }
     }
 
     @Override
@@ -210,7 +215,13 @@ public class SerialScheduledExecutorService
         SerialScheduledFuture<?> future = new RecurringRunnableSerialScheduledFuture<Void>(runnable, null, toMillis(l, timeUnit), toMillis(l1, timeUnit));
         if (l == 0) {
             future.task.run();
+
+            if (future.isFailed()) {
+                return future;
+            }
+
             future.restartDelayTimer();
+
         }
         tasks.add(future);
         return future;
@@ -296,7 +307,22 @@ public class SerialScheduledExecutorService
         @Override
         public boolean isDone()
         {
-            return task.isDone();
+            return task.isDone() || task.isCancelled();
+        }
+
+        public boolean isFailed()
+        {
+            if (!isDone()) {
+                return false;
+            }
+
+            try {
+                task.get();
+            }
+            catch (Throwable ignored) {
+                return true;
+            }
+            return false;
         }
 
         @Override
@@ -370,7 +396,7 @@ public class SerialScheduledExecutorService
             // Try to elapse the time quantum off the current item
             long used = current.elapseTime(quantum);
 
-            // If the item isn't done yet, we'll need to put it back in the queue
+            // If the item isn't done yet, and didn't fail, we'll need to put it back in the queue
             if (!current.isDone()) {
                 toRequeue.add(current);
                 continue;
@@ -396,7 +422,7 @@ public class SerialScheduledExecutorService
 
     private static void rescheduleTaskIfRequired(Collection<SerialScheduledFuture<?>> tasks, SerialScheduledFuture<?> task)
     {
-        if (task.isRecurring()) {
+        if (task.isRecurring() && !task.isFailed()) {
             task.restartDelayTimer();
             tasks.add(task);
         }
