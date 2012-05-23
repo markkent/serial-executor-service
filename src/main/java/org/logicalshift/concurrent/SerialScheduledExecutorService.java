@@ -37,6 +37,7 @@ public class SerialScheduledExecutorService
     @Override
     public void execute(Runnable runnable)
     {
+        Preconditions.checkNotNull(runnable, "Task object is null");
         runnable.run();
     }
 
@@ -78,6 +79,7 @@ public class SerialScheduledExecutorService
     @Override
     public <T> Future<T> submit(Callable<T> tCallable)
     {
+        Preconditions.checkNotNull(tCallable, "Task object is null");
         try {
             return Futures.immediateFuture(tCallable.call());
         }
@@ -89,6 +91,7 @@ public class SerialScheduledExecutorService
     @Override
     public <T> Future<T> submit(Runnable runnable, T t)
     {
+        Preconditions.checkNotNull(runnable, "Task object is null");
         try {
             runnable.run();
             return Futures.immediateFuture(t);
@@ -101,6 +104,7 @@ public class SerialScheduledExecutorService
     @Override
     public Future<?> submit(Runnable runnable)
     {
+        Preconditions.checkNotNull(runnable, "Task object is null");
         return submit(runnable, null);
     }
 
@@ -109,6 +113,7 @@ public class SerialScheduledExecutorService
     public <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> callables)
             throws InterruptedException
     {
+        Preconditions.checkNotNull(callables, "Task object list is null");
         ImmutableList.Builder<Future<T>> resultBuilder = ImmutableList.builder();
         for (Callable<T> callable : callables) {
             try {
@@ -125,6 +130,7 @@ public class SerialScheduledExecutorService
     public <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> callables, long l, TimeUnit timeUnit)
             throws InterruptedException
     {
+        Preconditions.checkNotNull(callables, "Task object list is null");
         return invokeAll(callables);
     }
 
@@ -159,32 +165,53 @@ public class SerialScheduledExecutorService
      */
     public void elapseTime(long quantum, TimeUnit timeUnit)
     {
-        if (isShutdown) {
-            throw new IllegalStateException("Trying to elapse time after shutdown");
-        }
+        Preconditions.checkArgument(quantum > 0, "Time quantum must be a positive number");
+        Preconditions.checkState(!isShutdown, "Trying to elapse time after shutdown");
+
         elapseTime(toMillis(quantum, timeUnit));
     }
 
     @Override
     public ScheduledFuture<?> schedule(Runnable runnable, long l, TimeUnit timeUnit)
     {
+        Preconditions.checkNotNull(runnable, "Task object is null");
+        Preconditions.checkArgument(l >= 0, "Delay must not be negative");
         SerialScheduledFuture<?> future = new SerialScheduledFuture<Void>(new FutureTask<Void>(runnable, null), toMillis(l, timeUnit));
-        tasks.add(future);
+        if (l == 0) {
+            future.task.run();
+        }
+        else {
+            tasks.add(future);
+        }
         return future;
     }
 
     @Override
     public <V> ScheduledFuture<V> schedule(Callable<V> vCallable, long l, TimeUnit timeUnit)
     {
+        Preconditions.checkNotNull(vCallable, "Task object is null");
+        Preconditions.checkArgument(l >= 0, "Delay must not be negative");
         SerialScheduledFuture<V> future = new SerialScheduledFuture<V>(new FutureTask<V>(vCallable), toMillis(l, timeUnit));
-        tasks.add(future);
+        if (l == 0) {
+            future.task.run();
+        }
+        else {
+            tasks.add(future);
+        }
         return future;
     }
 
     @Override
     public ScheduledFuture<?> scheduleAtFixedRate(Runnable runnable, long l, long l1, TimeUnit timeUnit)
     {
+        Preconditions.checkNotNull(runnable, "Task object is null");
+        Preconditions.checkArgument(l >= 0, "Initial delay must not be negative");
+        Preconditions.checkArgument(l1 > 0, "Repeating delay must be greater than 0");
         SerialScheduledFuture<?> future = new RecurringRunnableSerialScheduledFuture<Void>(runnable, null, toMillis(l, timeUnit), toMillis(l1, timeUnit));
+        if (l == 0) {
+            future.task.run();
+            future.restartDelayTimer();
+        }
         tasks.add(future);
         return future;
     }
@@ -192,9 +219,7 @@ public class SerialScheduledExecutorService
     @Override
     public ScheduledFuture<?> scheduleWithFixedDelay(Runnable runnable, long l, long l1, TimeUnit timeUnit)
     {
-        SerialScheduledFuture<?> future = new RecurringRunnableSerialScheduledFuture<Void>(runnable, null, toMillis(l, timeUnit), toMillis(l1, timeUnit));
-        tasks.add(future);
-        return future;
+        return scheduleAtFixedRate(runnable, l, l1, timeUnit);
     }
 
     class SerialScheduledFuture<T>

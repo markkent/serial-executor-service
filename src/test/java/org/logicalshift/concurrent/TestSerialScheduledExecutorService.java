@@ -76,7 +76,19 @@ public class TestSerialScheduledExecutorService
         assertTrue(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 1);
-     }
+    }
+
+    @Test
+    public void testScheduledRunnableWithZeroDelayCompletesImmediately()
+            throws Exception
+    {
+        Counter counter = new Counter();
+        Future<?> future = executorService.schedule(counter, 0, TimeUnit.MINUTES);
+
+        assertTrue(future.isDone());
+        assertFalse(future.isCancelled());
+        assertEquals(counter.getCount(), 1);
+    }
 
     @Test
     public void testCancelScheduledRunnable()
@@ -97,7 +109,7 @@ public class TestSerialScheduledExecutorService
 
         executorService.elapseTime(1, TimeUnit.MINUTES);
         assertEquals(counter.getCount(), 0);
-     }
+    }
 
     @Test
     public void testScheduleCallable()
@@ -117,7 +129,20 @@ public class TestSerialScheduledExecutorService
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 1);
         assertEquals((int)future.get(), 1);
-     }
+    }
+
+    @Test
+    public void testScheduledCallableWithZeroDelayCompletesImmediately()
+            throws Exception
+    {
+        CallableCounter counter = new CallableCounter();
+        Future<Integer> future = executorService.schedule(counter, 0, TimeUnit.MINUTES);
+
+        assertTrue(future.isDone());
+        assertFalse(future.isCancelled());
+        assertEquals(counter.getCount(), 1);
+    }
+
 
     @Test(expectedExceptions = CancellationException.class)
     public void testCancelScheduledCallable()
@@ -172,6 +197,23 @@ public class TestSerialScheduledExecutorService
         executorService.elapseTime(10, TimeUnit.MINUTES);
         assertEquals(counter.getCount(), 3);
 
+    }
+
+    @Test
+    public void testRepeatingRunnableWithZeroDelayExecutesImmediately()
+            throws Exception
+    {
+        Counter counter = new Counter();
+        ScheduledFuture<?> future = executorService.scheduleAtFixedRate(counter, 0, 5, TimeUnit.MINUTES);
+
+        assertFalse(future.isDone());
+        assertFalse(future.isCancelled());
+        assertEquals(counter.getCount(), 1);
+        assertEquals(future.getDelay(TimeUnit.MINUTES), 5);
+
+        // After another 10 minutes, we should have run twice more
+        executorService.elapseTime(10, TimeUnit.MINUTES);
+        assertEquals(counter.getCount(), 3);
     }
 
     @Test
