@@ -1,8 +1,11 @@
 package org.logicalshift.concurrent;
 
+import com.google.common.collect.ImmutableList;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.Future;
@@ -16,6 +19,8 @@ import static org.testng.Assert.fail;
 
 public class TestSerialScheduledExecutorService
 {
+    private static final String INNER = "inner";
+    private static final String OUTER = "outer";
     private SerialScheduledExecutorService executorService;
 
     @BeforeMethod
@@ -66,7 +71,8 @@ public class TestSerialScheduledExecutorService
     public void testThrownExceptionsArePushedIntoFutureForSubmittedRunnable()
             throws Exception
     {
-        Future<Integer> future = executorService.submit(new Runnable() {
+        Future<Integer> future = executorService.submit(new Runnable()
+        {
             @Override
             public void run()
             {
@@ -79,8 +85,7 @@ public class TestSerialScheduledExecutorService
         try {
             future.get();
         }
-        catch (Exception expected)
-        {
+        catch (Exception expected) {
             assertEquals(expected.getMessage(), "java.lang.RuntimeException: deliberate");
             return;
         }
@@ -104,7 +109,8 @@ public class TestSerialScheduledExecutorService
     public void testThrownExceptionsArePushedIntoFutureForSubmittedCallable()
             throws Exception
     {
-        Future<Integer> future = executorService.submit(new Callable<Integer>() {
+        Future<Integer> future = executorService.submit(new Callable<Integer>()
+        {
             @Override
             public Integer call()
                     throws Exception
@@ -118,8 +124,7 @@ public class TestSerialScheduledExecutorService
         try {
             future.get();
         }
-        catch (Exception expected)
-        {
+        catch (Exception expected) {
             assertEquals(expected.getMessage(), "java.lang.Exception: deliberate");
             return;
         }
@@ -150,7 +155,8 @@ public class TestSerialScheduledExecutorService
     public void testThrownExceptionsArePushedIntoFutureForScheduledRunnable()
             throws Exception
     {
-        Future<?> future = executorService.schedule(new Runnable() {
+        Future<?> future = executorService.schedule(new Runnable()
+        {
             @Override
             public void run()
             {
@@ -166,8 +172,7 @@ public class TestSerialScheduledExecutorService
         try {
             future.get();
         }
-        catch (Exception expected)
-        {
+        catch (Exception expected) {
             assertEquals(expected.getMessage(), "java.lang.RuntimeException: deliberate");
             caught = true;
         }
@@ -225,7 +230,7 @@ public class TestSerialScheduledExecutorService
         assertTrue(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 1);
-        assertEquals((int)future.get(), 1);
+        assertEquals((int) future.get(), 1);
     }
 
     @Test
@@ -250,8 +255,7 @@ public class TestSerialScheduledExecutorService
         try {
             future.get();
         }
-        catch (Exception expected)
-        {
+        catch (Exception expected) {
             assertEquals(expected.getMessage(), "java.lang.Exception: deliberate");
             caught = true;
         }
@@ -346,8 +350,7 @@ public class TestSerialScheduledExecutorService
         try {
             future.get();
         }
-        catch (Exception expected)
-        {
+        catch (Exception expected) {
             assertEquals(expected.getMessage(), "java.lang.RuntimeException: deliberate");
             caught = true;
         }
@@ -379,8 +382,7 @@ public class TestSerialScheduledExecutorService
         try {
             future.get();
         }
-        catch (Exception expected)
-        {
+        catch (Exception expected) {
             assertEquals(expected.getMessage(), "java.lang.RuntimeException: deliberate");
             caught = true;
         }
@@ -480,6 +482,226 @@ public class TestSerialScheduledExecutorService
         assertEquals(countEveryTwoMinutes.getCount(), 4);
     }
 
+    @Test
+    public void testScheduleAtFixedRateWithLongerDelayFromWithinATask()
+    {
+        List<String> collector = new LinkedList<String>();
+        long outerTaskDelay = TimeUnit.MINUTES.toMillis(10);
+        long innerTaskDelay = TimeUnit.MINUTES.toMillis(20);
+        long repeat = TimeUnit.DAYS.toMillis(10);
+
+        executorService.scheduleAtFixedRate(
+                createRunnableWithNestedScheduleAtFixedRate(collector, innerTaskDelay, repeat),
+                outerTaskDelay,
+                repeat,
+                TimeUnit.MILLISECONDS);
+
+        checkNestedScheduleWithLongerInnerTask(collector, outerTaskDelay, innerTaskDelay);
+    }
+
+    @Test
+    public void testScheduleAtFixedRateWithShorterDelayFromWithinATask()
+    {
+        List<String> collector = new LinkedList<String>();
+        long outerTaskDelay = TimeUnit.MINUTES.toMillis(10);
+        long innerTaskDelay = TimeUnit.MINUTES.toMillis(20);
+        long repeat = TimeUnit.DAYS.toMillis(10);
+
+        executorService.scheduleAtFixedRate(
+                createRunnableWithNestedScheduleAtFixedRate(collector, innerTaskDelay, repeat),
+                outerTaskDelay,
+                repeat,
+                TimeUnit.MILLISECONDS);
+
+        checkNestedScheduleWithShorterInnerTask(collector, outerTaskDelay, innerTaskDelay);
+    }
+
+    @Test
+    public void testScheduleWithFixedDelayWithLongerDelayFromWithinATask()
+    {
+        List<String> collector = new LinkedList<String>();
+        long outerTaskDelay = TimeUnit.MINUTES.toMillis(10);
+        long innerTaskDelay = TimeUnit.MINUTES.toMillis(20);
+        long repeat = TimeUnit.DAYS.toMillis(10);
+
+        executorService.scheduleWithFixedDelay(
+                createRunnableWithNestedScheduleWithFixedDelay(collector, innerTaskDelay, repeat),
+                outerTaskDelay,
+                repeat,
+                TimeUnit.MILLISECONDS);
+
+        checkNestedScheduleWithLongerInnerTask(collector, outerTaskDelay, innerTaskDelay);
+    }
+
+    @Test
+    public void testScheduleWithFixedDelayWithShorterDelayFromWithinATask()
+    {
+        List<String> collector = new LinkedList<String>();
+        long outerTaskDelay = TimeUnit.MINUTES.toMillis(10);
+        long innerTaskDelay = TimeUnit.MINUTES.toMillis(20);
+        long repeat = TimeUnit.DAYS.toMillis(10);
+
+        executorService.scheduleWithFixedDelay(
+                createRunnableWithNestedScheduleWithFixedDelay(collector, innerTaskDelay, repeat),
+                outerTaskDelay,
+                repeat,
+                TimeUnit.MILLISECONDS);
+
+        checkNestedScheduleWithShorterInnerTask(collector, outerTaskDelay, innerTaskDelay);
+    }
+
+    @Test
+    public void testScheduleRunnableWithLongerDelayFromWithinATask()
+    {
+        List<String> collector = new LinkedList<String>();
+        long outerTaskDelay = TimeUnit.MINUTES.toMillis(10);
+        long innerTaskDelay = TimeUnit.MINUTES.toMillis(20);
+
+        executorService.schedule(createRunnableWithNestedSchedule(collector, innerTaskDelay), outerTaskDelay, TimeUnit.MILLISECONDS);
+
+        checkNestedScheduleWithLongerInnerTask(collector, outerTaskDelay, innerTaskDelay);
+    }
+
+    @Test
+    public void testScheduleRunnableWithShorterDelayFromWithinATask()
+    {
+        List<String> collector = new LinkedList<String>();
+        long outerTaskDelay = TimeUnit.MINUTES.toMillis(10);
+        long innerTaskDelay = TimeUnit.MINUTES.toMillis(20);
+
+        executorService.schedule(createRunnableWithNestedSchedule(collector, innerTaskDelay), outerTaskDelay, TimeUnit.MILLISECONDS);
+
+        checkNestedScheduleWithShorterInnerTask(collector, outerTaskDelay, innerTaskDelay);
+    }
+
+    @Test
+    public void testScheduleCallableWithLongerDelayFromWithinATask()
+    {
+        List<String> collector = new LinkedList<String>();
+        long outerTaskDelay = TimeUnit.MINUTES.toMillis(10);
+        long innerTaskDelay = TimeUnit.MINUTES.toMillis(20);
+
+        executorService.schedule(createCallableWithNestedSchedule(collector, innerTaskDelay), outerTaskDelay, TimeUnit.MILLISECONDS);
+
+        checkNestedScheduleWithLongerInnerTask(collector, outerTaskDelay, innerTaskDelay);
+    }
+
+    @Test
+    public void testScheduleCallableWithShorterDelayFromWithinATask()
+    {
+        List<String> collector = new LinkedList<String>();
+        long outerTaskDelay = TimeUnit.MINUTES.toMillis(10);
+        long innerTaskDelay = TimeUnit.MINUTES.toMillis(20);
+
+        executorService.schedule(createCallableWithNestedSchedule(collector, innerTaskDelay), outerTaskDelay, TimeUnit.MILLISECONDS);
+
+        checkNestedScheduleWithShorterInnerTask(collector, outerTaskDelay, innerTaskDelay);
+    }
+
+    private Runnable createRunnableWithNestedScheduleWithFixedDelay(final List<String> collector, final long innerTaskDelay, final long repeat)
+    {
+        return new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                collector.add(OUTER);
+                executorService.scheduleWithFixedDelay(new Runnable()
+                {
+                    @Override
+                    public void run()
+                    {
+                        collector.add(INNER);
+                    }
+                }, innerTaskDelay, repeat, TimeUnit.MILLISECONDS);
+            }
+        };
+    }
+
+    private Runnable createRunnableWithNestedScheduleAtFixedRate(final List<String> collector, final long innerTaskDelay, final long repeat)
+    {
+        return new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                collector.add(OUTER);
+                executorService.scheduleAtFixedRate(new Runnable()
+                {
+                    @Override
+                    public void run()
+                    {
+                        collector.add(INNER);
+                    }
+                }, innerTaskDelay, repeat, TimeUnit.MILLISECONDS);
+            }
+        };
+    }
+
+    private Runnable createRunnableWithNestedSchedule(final List<String> collector, final long innerTaskDelay)
+    {
+        return new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                collector.add(OUTER);
+                executorService.schedule(new Runnable()
+                {
+                    @Override
+                    public void run()
+                    {
+                        collector.add(INNER);
+                    }
+                }, innerTaskDelay, TimeUnit.MILLISECONDS);
+            }
+        };
+    }
+
+    private Callable<Boolean> createCallableWithNestedSchedule(final List<String> collector, final long innerTaskDelay)
+    {
+        return new Callable<Boolean>()
+        {
+            @Override
+            public Boolean call()
+            {
+                collector.add(OUTER);
+                executorService.schedule(new Callable<Boolean>()
+                {
+                    @Override
+                    public Boolean call()
+                            throws Exception
+                    {
+                        collector.add(INNER);
+                        return false;
+                    }
+                }, innerTaskDelay, TimeUnit.MILLISECONDS);
+                return false;
+            }
+        };
+    }
+
+    private void checkNestedScheduleWithLongerInnerTask(List<String> collector, long outerTaskDelay, long innerTaskDelay)
+    {
+        executorService.elapseTime(outerTaskDelay - 1, TimeUnit.MILLISECONDS);
+        assertEquals(collector, ImmutableList.of());
+
+        executorService.elapseTime(1, TimeUnit.MILLISECONDS);
+        assertEquals(collector, ImmutableList.of(OUTER));
+
+        executorService.elapseTime(innerTaskDelay - 1, TimeUnit.MILLISECONDS);
+        assertEquals(collector, ImmutableList.of(OUTER));
+
+        executorService.elapseTime(1, TimeUnit.MILLISECONDS);
+        assertEquals(collector, ImmutableList.of(OUTER, INNER));
+    }
+
+    private void checkNestedScheduleWithShorterInnerTask(List<String> collector, long outerTaskDelay, long innerTaskDelay)
+    {
+        executorService.elapseTime(outerTaskDelay + innerTaskDelay, TimeUnit.MILLISECONDS);
+        assertEquals(collector, ImmutableList.of(OUTER, INNER));
+    }
+
     static class Counter
             implements Runnable
     {
@@ -516,7 +738,7 @@ public class TestSerialScheduledExecutorService
     }
 
     static class FailingCounter
-        implements Runnable
+            implements Runnable
     {
         private int count = 0;
         private final int limit;
