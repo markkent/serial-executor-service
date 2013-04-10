@@ -2,7 +2,6 @@ package org.logicalshift.concurrent;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 import com.google.common.primitives.Longs;
 import com.google.common.util.concurrent.Futures;
 
@@ -21,17 +20,20 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import static com.google.common.collect.Lists.newArrayList;
+
 /**
  * Implements ScheduledExecutorService with a controllable time elapse. Tasks are run
  * in the context of the thread advancing time.
- *
+ * <p/>
  * Tasks are modelled as instantaneous events; tasks scheduled to be run at the same
  * instant will be run in the order of their registration.
  */
 public class SerialScheduledExecutorService
         implements ScheduledExecutorService
 {
-    private final PriorityQueue<SerialScheduledFuture<?>> tasks = new PriorityQueue<SerialScheduledFuture<?>>();
+    private final PriorityQueue<SerialScheduledFuture<?>> futureTasks = new PriorityQueue<SerialScheduledFuture<?>>();
+    private Collection<SerialScheduledFuture<?>> tasks = futureTasks;
     private boolean isShutdown = false;
 
     @Override
@@ -41,8 +43,7 @@ public class SerialScheduledExecutorService
         try {
             runnable.run();
         }
-        catch (Throwable ignored)
-        {
+        catch (Throwable ignored) {
         }
     }
 
@@ -162,10 +163,10 @@ public class SerialScheduledExecutorService
 
     /**
      * Advance time by the given quantum.
-     *
+     * <p/>
      * Scheduled tasks due for execution will be executed in the caller's thread.
      *
-     * @param quantum  the amount of time to advance
+     * @param quantum the amount of time to advance
      * @param timeUnit the unit of the quantum amount
      */
     public void elapseTime(long quantum, TimeUnit timeUnit)
@@ -234,7 +235,7 @@ public class SerialScheduledExecutorService
     }
 
     class SerialScheduledFuture<T>
-        implements ScheduledFuture<T>
+            implements ScheduledFuture<T>
     {
         long remainingDelayMillis;
         FutureTask<T> task;
@@ -349,7 +350,7 @@ public class SerialScheduledExecutorService
     }
 
     class RecurringRunnableSerialScheduledFuture<T>
-        extends SerialScheduledFuture<T>
+            extends SerialScheduledFuture<T>
     {
         private final long recurringDelayMillis;
         private final Runnable runnable;
@@ -379,44 +380,57 @@ public class SerialScheduledExecutorService
 
     private void elapseTime(long quantum)
     {
-        List<SerialScheduledFuture<?>> toRequeue = Lists.newArrayList();
+        List<SerialScheduledFuture<?>> toRequeue = newArrayList();
 
-        while (tasks.peek() != null) {
-            SerialScheduledFuture<?> current = tasks.poll();
+        // Redirect where the external interface queues up tasks to a temporary
+        // collection. This allows the scheduled tasks to schedule future tasks.
+        Collection<SerialScheduledFuture<?>> originalTasks = tasks;
+        tasks = newArrayList();
+        try {
+            SerialScheduledFuture<?> current;
+            while ((current = futureTasks.poll()) != null) {
+                if (current.isCancelled()) {
+                    // Drop cancelled tasks
+                    continue;
+                }
 
-            if (current.isCancelled()) {
-                // Drop cancelled tasks
-                continue;
-            }
+                if (current.isDone()) {
+                    throw new AssertionError("Found a done task in the queue (contrary to expectation)");
+                }
 
-            if (current.isDone()) {
-                throw new AssertionError("Found a done task in the queue (contrary to expectation)");
-            }
+                // Try to elapse the time quantum off the current item
+                long used = current.elapseTime(quantum);
 
-            // Try to elapse the time quantum off the current item
-            long used = current.elapseTime(quantum);
+                // If the item isn't done yet, and didn't fail, we'll need to put it back in the queue
+                if (!current.isDone()) {
+                    toRequeue.add(current);
+                    continue;
+                }
 
-            // If the item isn't done yet, and didn't fail, we'll need to put it back in the queue
-            if (!current.isDone()) {
-                toRequeue.add(current);
-                continue;
-            }
-
-            if (used < quantum) {
-                // Partially used the quantum. Elapse the used portion off the rest of the queue so that we can reinsert
-                // this item in its correct spot (if necessary) before continuing with the rest of the quantum. This is
-                // because tasks may execute more than once during a single call to elapse time.
-                elapseTime(used);
-                rescheduleTaskIfRequired(tasks, current);
-                quantum -= used;
-            }
-            else {
-                // Completely used the quantum, once we're done with this pass through the queue, may want need to add it back
-                rescheduleTaskIfRequired(toRequeue, current);
+                if (used < quantum) {
+                    // Partially used the quantum. Elapse the used portion off the rest of the queue so that we can reinsert
+                    // this item in its correct spot (if necessary) before continuing with the rest of the quantum. This is
+                    // because tasks may execute more than once during a single call to elapse time. We do this recursively
+                    // out of convenience. Because this task is the next one that needs to run, all other tasks will need to
+                    // run no more than once. When done, any new tasks that were added by the tasks that ran can be added to
+                    // the queue for processing.
+                    elapseTime(used);
+                    rescheduleTaskIfRequired(futureTasks, current);
+                    futureTasks.addAll(tasks);
+                    tasks.clear();
+                    quantum -= used;
+                }
+                else {
+                    // Completely used the quantum, once we're done with this pass through the queue, may want need to add it back
+                    rescheduleTaskIfRequired(toRequeue, current);
+                }
             }
         }
-        for (SerialScheduledFuture<?> future : toRequeue) {
-            tasks.add(future);
+        finally {
+            futureTasks.addAll(toRequeue);
+            futureTasks.addAll(tasks);
+            tasks.clear();
+            tasks = originalTasks;
         }
     }
 
