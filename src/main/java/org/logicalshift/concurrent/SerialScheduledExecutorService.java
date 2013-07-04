@@ -213,7 +213,7 @@ public class SerialScheduledExecutorService
         Preconditions.checkNotNull(runnable, "Task object is null");
         Preconditions.checkArgument(l >= 0, "Initial delay must not be negative");
         Preconditions.checkArgument(l1 > 0, "Repeating delay must be greater than 0");
-        SerialScheduledFuture<?> future = new RecurringRunnableSerialScheduledFuture<Void>(runnable, null, toNanos(l, timeUnit), toNanos(l1, timeUnit));
+        SerialScheduledFuture<?> future = new RecurringRunnableSerialScheduledFuture(runnable, toNanos(l, timeUnit), toNanos(l1, timeUnit));
         if (l == 0) {
             future.task.run();
 
@@ -344,18 +344,16 @@ public class SerialScheduledExecutorService
         }
     }
 
-    class RecurringRunnableSerialScheduledFuture<T>
-            extends SerialScheduledFuture<T>
+    class RecurringRunnableSerialScheduledFuture
+            extends SerialScheduledFuture<Void>
     {
         private final long recurringDelayNanos;
         private final Runnable runnable;
-        private final T value;
 
-        RecurringRunnableSerialScheduledFuture(Runnable runnable, T value, long initialDelayNanos, long recurringDelayNanos)
+        RecurringRunnableSerialScheduledFuture(Runnable runnable, long initialDelayNanos, long recurringDelayNanos)
         {
-            super(new FutureTask<T>(runnable, value), initialDelayNanos);
+            super(new FutureTask<Void>(runnable, null), initialDelayNanos);
             this.runnable = runnable;
-            this.value = value;
             this.recurringDelayNanos = recurringDelayNanos;
         }
 
@@ -368,7 +366,7 @@ public class SerialScheduledExecutorService
         @Override
         public void restartDelayTimer()
         {
-            task = new FutureTask<T>(runnable, value);
+            task = new FutureTask<Void>(runnable, null);
             remainingDelayNanos = recurringDelayNanos;
         }
     }
