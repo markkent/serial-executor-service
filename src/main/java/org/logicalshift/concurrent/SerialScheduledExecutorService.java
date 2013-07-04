@@ -174,7 +174,7 @@ public class SerialScheduledExecutorService
         Preconditions.checkArgument(quantum > 0, "Time quantum must be a positive number");
         Preconditions.checkState(!isShutdown, "Trying to elapse time after shutdown");
 
-        elapseTime(toMillis(quantum, timeUnit));
+        elapseTime(toNanos(quantum, timeUnit));
     }
 
     @Override
@@ -182,7 +182,7 @@ public class SerialScheduledExecutorService
     {
         Preconditions.checkNotNull(runnable, "Task object is null");
         Preconditions.checkArgument(l >= 0, "Delay must not be negative");
-        SerialScheduledFuture<?> future = new SerialScheduledFuture<Void>(new FutureTask<Void>(runnable, null), toMillis(l, timeUnit));
+        SerialScheduledFuture<?> future = new SerialScheduledFuture<Void>(new FutureTask<Void>(runnable, null), toNanos(l, timeUnit));
         if (l == 0) {
             future.task.run();
         }
@@ -197,7 +197,7 @@ public class SerialScheduledExecutorService
     {
         Preconditions.checkNotNull(vCallable, "Task object is null");
         Preconditions.checkArgument(l >= 0, "Delay must not be negative");
-        SerialScheduledFuture<V> future = new SerialScheduledFuture<V>(new FutureTask<V>(vCallable), toMillis(l, timeUnit));
+        SerialScheduledFuture<V> future = new SerialScheduledFuture<V>(new FutureTask<V>(vCallable), toNanos(l, timeUnit));
         if (l == 0) {
             future.task.run();
         }
@@ -213,7 +213,7 @@ public class SerialScheduledExecutorService
         Preconditions.checkNotNull(runnable, "Task object is null");
         Preconditions.checkArgument(l >= 0, "Initial delay must not be negative");
         Preconditions.checkArgument(l1 > 0, "Repeating delay must be greater than 0");
-        SerialScheduledFuture<?> future = new RecurringRunnableSerialScheduledFuture<Void>(runnable, null, toMillis(l, timeUnit), toMillis(l1, timeUnit));
+        SerialScheduledFuture<?> future = new RecurringRunnableSerialScheduledFuture<Void>(runnable, null, toNanos(l, timeUnit), toNanos(l1, timeUnit));
         if (l == 0) {
             future.task.run();
 
@@ -237,34 +237,29 @@ public class SerialScheduledExecutorService
     class SerialScheduledFuture<T>
             implements ScheduledFuture<T>
     {
-        long remainingDelayMillis;
+        long remainingDelayNanos;
         FutureTask<T> task;
 
-        public SerialScheduledFuture(FutureTask<T> task, long delayMillis)
+        SerialScheduledFuture(FutureTask<T> task, long delayNanos)
         {
             this.task = task;
-            this.remainingDelayMillis = delayMillis;
+            this.remainingDelayNanos = delayNanos;
         }
 
-        public long remainingMillis()
-        {
-            return remainingDelayMillis;
-        }
-
-        // wind time off the clock, return the amount of used time in millis
-        public long elapseTime(long quantumMillis)
+        // wind time off the clock, return the amount of used time in nanos
+        long elapseTime(long quantumNanos)
         {
             if (task.isDone() || task.isCancelled()) {
                 return 0;
             }
 
-            if (remainingDelayMillis <= quantumMillis) {
+            if (remainingDelayNanos <= quantumNanos) {
                 task.run();
-                return remainingDelayMillis;
+                return remainingDelayNanos;
             }
 
-            remainingDelayMillis -= quantumMillis;
-            return quantumMillis;
+            remainingDelayNanos -= quantumNanos;
+            return quantumNanos;
         }
 
         public boolean isRecurring()
@@ -280,7 +275,7 @@ public class SerialScheduledExecutorService
         @Override
         public long getDelay(TimeUnit timeUnit)
         {
-            return timeUnit.convert(remainingDelayMillis, TimeUnit.MILLISECONDS);
+            return timeUnit.convert(remainingDelayNanos, TimeUnit.NANOSECONDS);
         }
 
         @Override
@@ -288,9 +283,9 @@ public class SerialScheduledExecutorService
         {
             if (delayed instanceof SerialScheduledFuture) {
                 SerialScheduledFuture other = (SerialScheduledFuture) delayed;
-                return Longs.compare(this.remainingDelayMillis, other.remainingDelayMillis);
+                return Longs.compare(this.remainingDelayNanos, other.remainingDelayNanos);
             }
-            return Longs.compare(this.remainingMillis(), delayed.getDelay(TimeUnit.MILLISECONDS));
+            return Longs.compare(remainingDelayNanos, delayed.getDelay(TimeUnit.NANOSECONDS));
         }
 
         @Override
@@ -352,16 +347,16 @@ public class SerialScheduledExecutorService
     class RecurringRunnableSerialScheduledFuture<T>
             extends SerialScheduledFuture<T>
     {
-        private final long recurringDelayMillis;
+        private final long recurringDelayNanos;
         private final Runnable runnable;
         private final T value;
 
-        RecurringRunnableSerialScheduledFuture(Runnable runnable, T value, long initialDelayMillis, long recurringDelayMillis)
+        RecurringRunnableSerialScheduledFuture(Runnable runnable, T value, long initialDelayNanos, long recurringDelayNanos)
         {
-            super(new FutureTask<T>(runnable, value), initialDelayMillis);
+            super(new FutureTask<T>(runnable, value), initialDelayNanos);
             this.runnable = runnable;
             this.value = value;
-            this.recurringDelayMillis = recurringDelayMillis;
+            this.recurringDelayNanos = recurringDelayNanos;
         }
 
         @Override
@@ -374,7 +369,7 @@ public class SerialScheduledExecutorService
         public void restartDelayTimer()
         {
             task = new FutureTask<T>(runnable, value);
-            remainingDelayMillis = recurringDelayMillis;
+            remainingDelayNanos = recurringDelayNanos;
         }
     }
 
@@ -442,8 +437,8 @@ public class SerialScheduledExecutorService
         }
     }
 
-    private static long toMillis(long quantum, TimeUnit timeUnit)
+    private static long toNanos(long quantum, TimeUnit timeUnit)
     {
-        return TimeUnit.MILLISECONDS.convert(quantum, timeUnit);
+        return TimeUnit.NANOSECONDS.convert(quantum, timeUnit);
     }
 }

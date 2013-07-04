@@ -137,15 +137,15 @@ public class TestSerialScheduledExecutorService
             throws Exception
     {
         Counter counter = new Counter();
-        Future<?> future = executorService.schedule(counter, 10, TimeUnit.MINUTES);
+        Future<?> future = executorService.schedule(counter, 10, TimeUnit.NANOSECONDS);
 
-        executorService.elapseTime(9, TimeUnit.MINUTES);
+        executorService.elapseTime(9, TimeUnit.NANOSECONDS);
 
         assertFalse(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 0);
 
-        executorService.elapseTime(1, TimeUnit.MINUTES);
+        executorService.elapseTime(1, TimeUnit.NANOSECONDS);
         assertTrue(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 1);
@@ -218,15 +218,15 @@ public class TestSerialScheduledExecutorService
             throws Exception
     {
         CallableCounter counter = new CallableCounter();
-        Future<Integer> future = executorService.schedule(counter, 10, TimeUnit.MINUTES);
+        Future<Integer> future = executorService.schedule(counter, 10, TimeUnit.NANOSECONDS);
 
-        executorService.elapseTime(9, TimeUnit.MINUTES);
+        executorService.elapseTime(9, TimeUnit.NANOSECONDS);
 
         assertFalse(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 0);
 
-        executorService.elapseTime(1, TimeUnit.MINUTES);
+        executorService.elapseTime(1, TimeUnit.NANOSECONDS);
         assertTrue(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 1);
@@ -304,28 +304,28 @@ public class TestSerialScheduledExecutorService
             throws Exception
     {
         Counter counter = new Counter();
-        ScheduledFuture<?> future = executorService.scheduleAtFixedRate(counter, 10, 5, TimeUnit.MINUTES);
+        ScheduledFuture<?> future = executorService.scheduleAtFixedRate(counter, 10, 5, TimeUnit.NANOSECONDS);
 
         assertFalse(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 0);
 
-        // After 9 minutes, we shouldn't have run yet, and should have 1 minute left
-        executorService.elapseTime(9, TimeUnit.MINUTES);
+        // After 9 nanoseconds, we shouldn't have run yet, and should have 1 nanosecond left
+        executorService.elapseTime(9, TimeUnit.NANOSECONDS);
         assertFalse(future.isDone());
         assertFalse(future.isCancelled());
-        assertEquals(future.getDelay(TimeUnit.MINUTES), 1);
+        assertEquals(future.getDelay(TimeUnit.NANOSECONDS), 1);
         assertEquals(counter.getCount(), 0);
 
-        // After 1 more minute, we should have run once, and should have 5 minutes remaining
-        executorService.elapseTime(1, TimeUnit.MINUTES);
+        // After 1 more nanosecond, we should have run once, and should have 5 nanoseconds remaining
+        executorService.elapseTime(1, TimeUnit.NANOSECONDS);
         assertFalse(future.isDone());
         assertFalse(future.isCancelled());
-        assertEquals(future.getDelay(TimeUnit.MINUTES), 5);
+        assertEquals(future.getDelay(TimeUnit.NANOSECONDS), 5);
         assertEquals(counter.getCount(), 1);
 
-        // After another 10 minutes, we should have run twice more
-        executorService.elapseTime(10, TimeUnit.MINUTES);
+        // After another 10 nanoseconds, we should have run twice more
+        executorService.elapseTime(10, TimeUnit.NANOSECONDS);
         assertEquals(counter.getCount(), 3);
 
     }
