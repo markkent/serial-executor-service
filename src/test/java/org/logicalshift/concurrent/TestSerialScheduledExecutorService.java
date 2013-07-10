@@ -332,7 +332,7 @@ public class TestSerialScheduledExecutorService
     {
         Ticker ticker = executorService.getTicker();
         long initialTick = ticker.read();
-        Counter counter = new TickedCounter(ticker, 10, 15, 20, 25);
+        Counter counter = new TickedCounter(ticker, 10, 15, 20);
         ScheduledFuture<?> future = executorService.scheduleAtFixedRate(counter, 10, 5, TimeUnit.NANOSECONDS);
 
         assertFalse(future.isDone());
@@ -512,8 +512,8 @@ public class TestSerialScheduledExecutorService
         long initialTick = ticker.read();
         Counter countEveryMinute = new TickedCounter(ticker, 1, 2, 3, 4, 5, 6, 7);
         Counter countEveryTwoMinutes = new TickedCounter(ticker, 2, 4, 6, 8);
-        ScheduledFuture<?> futureEveryMinute = executorService.scheduleAtFixedRate(countEveryMinute, 1, 1, TimeUnit.NANOSECONDS);
-        ScheduledFuture<?> futureEveryTwoMinutes = executorService.scheduleAtFixedRate(countEveryTwoMinutes, 2, 2, TimeUnit.NANOSECONDS);
+        ScheduledFuture<?> futureEveryNano = executorService.scheduleAtFixedRate(countEveryMinute, 1, 1, TimeUnit.NANOSECONDS);
+        executorService.scheduleAtFixedRate(countEveryTwoMinutes, 2, 2, TimeUnit.NANOSECONDS);
 
         executorService.elapseTime(7, TimeUnit.NANOSECONDS);
 
@@ -521,7 +521,7 @@ public class TestSerialScheduledExecutorService
         assertEquals(countEveryTwoMinutes.getCount(), 3);
         assertEquals(ticker.read() - initialTick, 7);
 
-        futureEveryMinute.cancel(true);
+        futureEveryNano.cancel(true);
 
         executorService.elapseTime(1, TimeUnit.NANOSECONDS);
         assertEquals(countEveryMinute.getCount(), 7);
