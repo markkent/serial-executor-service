@@ -1,9 +1,12 @@
 package org.logicalshift.concurrent;
 
+import com.google.common.base.Ticker;
 import com.google.common.collect.ImmutableList;
+import com.google.common.primitives.Longs;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -133,22 +136,39 @@ public class TestSerialScheduledExecutorService
     }
 
     @Test
+    public void testAdvanceNothingScheduled()
+    {
+        Ticker ticker = executorService.getTicker();
+        long initialTick = ticker.read();
+
+        executorService.elapseTime(10, TimeUnit.NANOSECONDS);
+        assertEquals(ticker.read() - initialTick, 10);
+
+        executorService.elapseTime(10, TimeUnit.NANOSECONDS);
+        assertEquals(ticker.read() - initialTick, 20);
+    }
+
+    @Test
     public void testScheduleRunnable()
             throws Exception
     {
-        Counter counter = new Counter();
-        Future<?> future = executorService.schedule(counter, 10, TimeUnit.MINUTES);
+        Ticker ticker = executorService.getTicker();
+        long initialTick = ticker.read();
+        Counter counter = new TickedCounter(ticker, 10);
+        Future<?> future = executorService.schedule(counter, 10, TimeUnit.NANOSECONDS);
 
-        executorService.elapseTime(9, TimeUnit.MINUTES);
+        executorService.elapseTime(9, TimeUnit.NANOSECONDS);
 
         assertFalse(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 0);
+        assertEquals(ticker.read() - initialTick, 9);
 
-        executorService.elapseTime(1, TimeUnit.MINUTES);
+        executorService.elapseTime(1, TimeUnit.NANOSECONDS);
         assertTrue(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 1);
+        assertEquals(ticker.read() - initialTick, 10);
     }
 
     @Test
@@ -184,33 +204,40 @@ public class TestSerialScheduledExecutorService
     public void testScheduledRunnableWithZeroDelayCompletesImmediately()
             throws Exception
     {
-        Counter counter = new Counter();
+        Ticker ticker = executorService.getTicker();
+        long initialTick = ticker.read();
+        Counter counter = new TickedCounter(ticker, 0);
         Future<?> future = executorService.schedule(counter, 0, TimeUnit.MINUTES);
 
         assertTrue(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 1);
+        assertEquals(ticker.read() - initialTick, 0);
     }
 
     @Test
     public void testCancelScheduledRunnable()
             throws Exception
     {
-        Counter counter = new Counter();
-        Future<?> future = executorService.schedule(counter, 10, TimeUnit.MINUTES);
+        Ticker ticker = executorService.getTicker();
+        long initialTick = ticker.read();
+        Counter counter = new TickedCounter(ticker);
+        Future<?> future = executorService.schedule(counter, 10, TimeUnit.NANOSECONDS);
 
-        executorService.elapseTime(9, TimeUnit.MINUTES);
+        executorService.elapseTime(9, TimeUnit.NANOSECONDS);
 
         assertFalse(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 0);
+        assertEquals(ticker.read() - initialTick, 9);
 
         future.cancel(true);
         assertTrue(future.isDone());
         assertTrue(future.isCancelled());
 
-        executorService.elapseTime(1, TimeUnit.MINUTES);
+        executorService.elapseTime(1, TimeUnit.NANOSECONDS);
         assertEquals(counter.getCount(), 0);
+        assertEquals(ticker.read() - initialTick, 10);
     }
 
     @Test
@@ -218,15 +245,15 @@ public class TestSerialScheduledExecutorService
             throws Exception
     {
         CallableCounter counter = new CallableCounter();
-        Future<Integer> future = executorService.schedule(counter, 10, TimeUnit.MINUTES);
+        Future<Integer> future = executorService.schedule(counter, 10, TimeUnit.NANOSECONDS);
 
-        executorService.elapseTime(9, TimeUnit.MINUTES);
+        executorService.elapseTime(9, TimeUnit.NANOSECONDS);
 
         assertFalse(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 0);
 
-        executorService.elapseTime(1, TimeUnit.MINUTES);
+        executorService.elapseTime(1, TimeUnit.NANOSECONDS);
         assertTrue(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 1);
@@ -303,30 +330,35 @@ public class TestSerialScheduledExecutorService
     public void testRepeatingRunnable()
             throws Exception
     {
-        Counter counter = new Counter();
-        ScheduledFuture<?> future = executorService.scheduleAtFixedRate(counter, 10, 5, TimeUnit.MINUTES);
+        Ticker ticker = executorService.getTicker();
+        long initialTick = ticker.read();
+        Counter counter = new TickedCounter(ticker, 10, 15, 20);
+        ScheduledFuture<?> future = executorService.scheduleAtFixedRate(counter, 10, 5, TimeUnit.NANOSECONDS);
 
         assertFalse(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 0);
 
-        // After 9 minutes, we shouldn't have run yet, and should have 1 minute left
-        executorService.elapseTime(9, TimeUnit.MINUTES);
+        // After 9 nanoseconds, we shouldn't have run yet, and should have 1 nanosecond left
+        executorService.elapseTime(9, TimeUnit.NANOSECONDS);
         assertFalse(future.isDone());
         assertFalse(future.isCancelled());
-        assertEquals(future.getDelay(TimeUnit.MINUTES), 1);
+        assertEquals(future.getDelay(TimeUnit.NANOSECONDS), 1);
         assertEquals(counter.getCount(), 0);
+        assertEquals(ticker.read() - initialTick, 9);
 
-        // After 1 more minute, we should have run once, and should have 5 minutes remaining
-        executorService.elapseTime(1, TimeUnit.MINUTES);
+        // After 1 more nanosecond, we should have run once, and should have 5 nanoseconds remaining
+        executorService.elapseTime(1, TimeUnit.NANOSECONDS);
         assertFalse(future.isDone());
         assertFalse(future.isCancelled());
-        assertEquals(future.getDelay(TimeUnit.MINUTES), 5);
+        assertEquals(future.getDelay(TimeUnit.NANOSECONDS), 5);
         assertEquals(counter.getCount(), 1);
+        assertEquals(ticker.read() - initialTick, 10);
 
-        // After another 10 minutes, we should have run twice more
-        executorService.elapseTime(10, TimeUnit.MINUTES);
+        // After another 10 nanoseconds, we should have run twice more
+        executorService.elapseTime(10, TimeUnit.NANOSECONDS);
         assertEquals(counter.getCount(), 3);
+        assertEquals(ticker.read() - initialTick, 20);
 
     }
 
@@ -398,88 +430,103 @@ public class TestSerialScheduledExecutorService
     public void testRepeatingRunnableWithZeroDelayExecutesImmediately()
             throws Exception
     {
-        Counter counter = new Counter();
-        ScheduledFuture<?> future = executorService.scheduleAtFixedRate(counter, 0, 5, TimeUnit.MINUTES);
+        Ticker ticker = executorService.getTicker();
+        long initialTick = ticker.read();
+        Counter counter = new TickedCounter(ticker, 0, 5, 10);
+        ScheduledFuture<?> future = executorService.scheduleAtFixedRate(counter, 0, 5, TimeUnit.NANOSECONDS);
 
         assertFalse(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 1);
-        assertEquals(future.getDelay(TimeUnit.MINUTES), 5);
+        assertEquals(future.getDelay(TimeUnit.NANOSECONDS), 5);
 
-        // After another 10 minutes, we should have run twice more
-        executorService.elapseTime(10, TimeUnit.MINUTES);
+        // After another 10 nanoseconds, we should have run twice more
+        executorService.elapseTime(10, TimeUnit.NANOSECONDS);
         assertEquals(counter.getCount(), 3);
+        assertEquals(ticker.read() - initialTick, 10);
     }
 
     @Test
     public void testCancelRepeatingRunnableBeforeFirstRun()
             throws Exception
     {
-        Counter counter = new Counter();
-        ScheduledFuture<?> future = executorService.scheduleAtFixedRate(counter, 10, 5, TimeUnit.MINUTES);
+        Ticker ticker = executorService.getTicker();
+        long initialTick = ticker.read();
+        Counter counter = new TickedCounter(ticker);
+        ScheduledFuture<?> future = executorService.scheduleAtFixedRate(counter, 10, 5, TimeUnit.NANOSECONDS);
 
         assertFalse(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 0);
 
-        executorService.elapseTime(9, TimeUnit.MINUTES);
+        executorService.elapseTime(9, TimeUnit.NANOSECONDS);
 
         future.cancel(true);
 
         assertTrue(future.isDone());
         assertTrue(future.isCancelled());
         assertEquals(counter.getCount(), 0);
+        assertEquals(ticker.read() - initialTick, 9);
 
-        executorService.elapseTime(1, TimeUnit.MINUTES);
+        executorService.elapseTime(1, TimeUnit.NANOSECONDS);
         assertTrue(future.isDone());
         assertTrue(future.isCancelled());
         assertEquals(counter.getCount(), 0);
+        assertEquals(ticker.read() - initialTick, 10);
     }
 
     @Test
     public void testCancelRepeatingRunnableAfterFirstRun()
             throws Exception
     {
-        Counter counter = new Counter();
-        ScheduledFuture<?> future = executorService.scheduleAtFixedRate(counter, 10, 5, TimeUnit.MINUTES);
+        Ticker ticker = executorService.getTicker();
+        long initialTick = ticker.read();
+        Counter counter = new TickedCounter(ticker, 10);
+        ScheduledFuture<?> future = executorService.scheduleAtFixedRate(counter, 10, 5, TimeUnit.NANOSECONDS);
 
         assertFalse(future.isDone());
         assertFalse(future.isCancelled());
         assertEquals(counter.getCount(), 0);
 
-        executorService.elapseTime(10, TimeUnit.MINUTES);
+        executorService.elapseTime(10, TimeUnit.NANOSECONDS);
 
         future.cancel(true);
 
         assertTrue(future.isDone());
         assertTrue(future.isCancelled());
         assertEquals(counter.getCount(), 1);
+        assertEquals(ticker.read() - initialTick, 10);
 
-        executorService.elapseTime(5, TimeUnit.MINUTES);
+        executorService.elapseTime(5, TimeUnit.NANOSECONDS);
         assertTrue(future.isDone());
         assertTrue(future.isCancelled());
         assertEquals(counter.getCount(), 1);
+        assertEquals(ticker.read() - initialTick, 15);
     }
 
     @Test
     public void testMultipleRepeatingRunnables()
             throws Exception
     {
-        Counter countEveryMinute = new Counter();
-        Counter countEveryTwoMinutes = new Counter();
-        ScheduledFuture<?> futureEveryMinute = executorService.scheduleAtFixedRate(countEveryMinute, 1, 1, TimeUnit.MINUTES);
-        ScheduledFuture<?> futureEveryTwoMinutes = executorService.scheduleAtFixedRate(countEveryTwoMinutes, 2, 2, TimeUnit.MINUTES);
+        Ticker ticker = executorService.getTicker();
+        long initialTick = ticker.read();
+        Counter countEveryMinute = new TickedCounter(ticker, 1, 2, 3, 4, 5, 6, 7);
+        Counter countEveryTwoMinutes = new TickedCounter(ticker, 2, 4, 6, 8);
+        ScheduledFuture<?> futureEveryNano = executorService.scheduleAtFixedRate(countEveryMinute, 1, 1, TimeUnit.NANOSECONDS);
+        executorService.scheduleAtFixedRate(countEveryTwoMinutes, 2, 2, TimeUnit.NANOSECONDS);
 
-        executorService.elapseTime(7, TimeUnit.MINUTES);
+        executorService.elapseTime(7, TimeUnit.NANOSECONDS);
 
         assertEquals(countEveryMinute.getCount(), 7);
         assertEquals(countEveryTwoMinutes.getCount(), 3);
+        assertEquals(ticker.read() - initialTick, 7);
 
-        futureEveryMinute.cancel(true);
+        futureEveryNano.cancel(true);
 
-        executorService.elapseTime(1, TimeUnit.MINUTES);
+        executorService.elapseTime(1, TimeUnit.NANOSECONDS);
         assertEquals(countEveryMinute.getCount(), 7);
         assertEquals(countEveryTwoMinutes.getCount(), 4);
+        assertEquals(ticker.read() - initialTick, 8);
     }
 
     @Test
@@ -761,6 +808,28 @@ public class TestSerialScheduledExecutorService
             if (count > limit) {
                 throw new RuntimeException("deliberate");
             }
+        }
+    }
+
+    private class TickedCounter extends Counter
+    {
+
+        private final Ticker ticker;
+        private final long initialTick;
+        private final Iterator<Long> expectedTicks;
+
+        public TickedCounter(Ticker ticker, long... expectedTicks)
+        {
+            this.ticker = ticker;
+            initialTick = ticker.read();
+            this.expectedTicks = Longs.asList(expectedTicks).iterator();
+        }
+
+        @Override
+        public void run()
+        {
+            super.run();
+            assertEquals(ticker.read() - initialTick, (long) expectedTicks.next());
         }
     }
 }
