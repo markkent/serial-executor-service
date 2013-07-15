@@ -1,10 +1,12 @@
 package org.logicalshift.concurrent;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Ticker;
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Longs;
 import com.google.common.util.concurrent.Futures;
 
+import javax.annotation.Nullable;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -19,6 +21,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static com.google.common.collect.Lists.newArrayList;
 
@@ -32,6 +35,7 @@ import static com.google.common.collect.Lists.newArrayList;
 public class SerialScheduledExecutorService
         implements ScheduledExecutorService
 {
+    private final ManualTicker ticker = new ManualTicker();
     private final PriorityQueue<SerialScheduledFuture<?>> futureTasks = new PriorityQueue<SerialScheduledFuture<?>>();
     private Collection<SerialScheduledFuture<?>> tasks = futureTasks;
     private boolean isShutdown = false;
@@ -174,7 +178,14 @@ public class SerialScheduledExecutorService
         Preconditions.checkArgument(quantum > 0, "Time quantum must be a positive number");
         Preconditions.checkState(!isShutdown, "Trying to elapse time after shutdown");
 
-        elapseTime(toMillis(quantum, timeUnit));
+        elapseTime(toNanos(quantum, timeUnit), ticker);
+    }
+
+    /**
+     * Returns a {@link com.google.common.base.Ticker} that is advanced by {@link #elapseTime}
+     */
+    public Ticker getTicker() {
+        return ticker;
     }
 
     @Override
@@ -182,7 +193,7 @@ public class SerialScheduledExecutorService
     {
         Preconditions.checkNotNull(runnable, "Task object is null");
         Preconditions.checkArgument(l >= 0, "Delay must not be negative");
-        SerialScheduledFuture<?> future = new SerialScheduledFuture<Void>(new FutureTask<Void>(runnable, null), toMillis(l, timeUnit));
+        SerialScheduledFuture<?> future = new SerialScheduledFuture<Void>(new FutureTask<Void>(runnable, null), toNanos(l, timeUnit));
         if (l == 0) {
             future.task.run();
         }
@@ -197,7 +208,7 @@ public class SerialScheduledExecutorService
     {
         Preconditions.checkNotNull(vCallable, "Task object is null");
         Preconditions.checkArgument(l >= 0, "Delay must not be negative");
-        SerialScheduledFuture<V> future = new SerialScheduledFuture<V>(new FutureTask<V>(vCallable), toMillis(l, timeUnit));
+        SerialScheduledFuture<V> future = new SerialScheduledFuture<V>(new FutureTask<V>(vCallable), toNanos(l, timeUnit));
         if (l == 0) {
             future.task.run();
         }
@@ -213,7 +224,7 @@ public class SerialScheduledExecutorService
         Preconditions.checkNotNull(runnable, "Task object is null");
         Preconditions.checkArgument(l >= 0, "Initial delay must not be negative");
         Preconditions.checkArgument(l1 > 0, "Repeating delay must be greater than 0");
-        SerialScheduledFuture<?> future = new RecurringRunnableSerialScheduledFuture<Void>(runnable, null, toMillis(l, timeUnit), toMillis(l1, timeUnit));
+        SerialScheduledFuture<?> future = new RecurringRunnableSerialScheduledFuture(runnable, toNanos(l, timeUnit), toNanos(l1, timeUnit));
         if (l == 0) {
             future.task.run();
 
@@ -237,34 +248,32 @@ public class SerialScheduledExecutorService
     class SerialScheduledFuture<T>
             implements ScheduledFuture<T>
     {
-        long remainingDelayMillis;
+        long remainingDelayNanos;
         FutureTask<T> task;
 
-        public SerialScheduledFuture(FutureTask<T> task, long delayMillis)
+        SerialScheduledFuture(FutureTask<T> task, long delayNanos)
         {
             this.task = task;
-            this.remainingDelayMillis = delayMillis;
+            this.remainingDelayNanos = delayNanos;
         }
 
-        public long remainingMillis()
-        {
-            return remainingDelayMillis;
-        }
-
-        // wind time off the clock, return the amount of used time in millis
-        public long elapseTime(long quantumMillis)
+        // wind time off the clock, return the amount of used time in nanos
+        long elapseTime(long quantumNanos, @Nullable ManualTicker ticker)
         {
             if (task.isDone() || task.isCancelled()) {
                 return 0;
             }
 
-            if (remainingDelayMillis <= quantumMillis) {
+            if (remainingDelayNanos <= quantumNanos) {
+                if (ticker != null) {
+                    ticker.advance(remainingDelayNanos);
+                }
                 task.run();
-                return remainingDelayMillis;
+                return remainingDelayNanos;
             }
 
-            remainingDelayMillis -= quantumMillis;
-            return quantumMillis;
+            remainingDelayNanos -= quantumNanos;
+            return quantumNanos;
         }
 
         public boolean isRecurring()
@@ -280,7 +289,7 @@ public class SerialScheduledExecutorService
         @Override
         public long getDelay(TimeUnit timeUnit)
         {
-            return timeUnit.convert(remainingDelayMillis, TimeUnit.MILLISECONDS);
+            return timeUnit.convert(remainingDelayNanos, TimeUnit.NANOSECONDS);
         }
 
         @Override
@@ -288,9 +297,9 @@ public class SerialScheduledExecutorService
         {
             if (delayed instanceof SerialScheduledFuture) {
                 SerialScheduledFuture other = (SerialScheduledFuture) delayed;
-                return Longs.compare(this.remainingDelayMillis, other.remainingDelayMillis);
+                return Longs.compare(this.remainingDelayNanos, other.remainingDelayNanos);
             }
-            return Longs.compare(this.remainingMillis(), delayed.getDelay(TimeUnit.MILLISECONDS));
+            return Longs.compare(remainingDelayNanos, delayed.getDelay(TimeUnit.NANOSECONDS));
         }
 
         @Override
@@ -349,19 +358,17 @@ public class SerialScheduledExecutorService
         }
     }
 
-    class RecurringRunnableSerialScheduledFuture<T>
-            extends SerialScheduledFuture<T>
+    class RecurringRunnableSerialScheduledFuture
+            extends SerialScheduledFuture<Void>
     {
-        private final long recurringDelayMillis;
+        private final long recurringDelayNanos;
         private final Runnable runnable;
-        private final T value;
 
-        RecurringRunnableSerialScheduledFuture(Runnable runnable, T value, long initialDelayMillis, long recurringDelayMillis)
+        RecurringRunnableSerialScheduledFuture(Runnable runnable, long initialDelayNanos, long recurringDelayNanos)
         {
-            super(new FutureTask<T>(runnable, value), initialDelayMillis);
+            super(new FutureTask<Void>(runnable, null), initialDelayNanos);
             this.runnable = runnable;
-            this.value = value;
-            this.recurringDelayMillis = recurringDelayMillis;
+            this.recurringDelayNanos = recurringDelayNanos;
         }
 
         @Override
@@ -373,12 +380,12 @@ public class SerialScheduledExecutorService
         @Override
         public void restartDelayTimer()
         {
-            task = new FutureTask<T>(runnable, value);
-            remainingDelayMillis = recurringDelayMillis;
+            task = new FutureTask<Void>(runnable, null);
+            remainingDelayNanos = recurringDelayNanos;
         }
     }
 
-    private void elapseTime(long quantum)
+    private void elapseTime(long quantum, @Nullable ManualTicker ticker)
     {
         List<SerialScheduledFuture<?>> toRequeue = newArrayList();
 
@@ -399,7 +406,7 @@ public class SerialScheduledExecutorService
                 }
 
                 // Try to elapse the time quantum off the current item
-                long used = current.elapseTime(quantum);
+                long used = current.elapseTime(quantum, ticker);
 
                 // If the item isn't done yet, and didn't fail, we'll need to put it back in the queue
                 if (!current.isDone()) {
@@ -414,7 +421,7 @@ public class SerialScheduledExecutorService
                     // out of convenience. Because this task is the next one that needs to run, all other tasks will need to
                     // run no more than once. When done, any new tasks that were added by the tasks that ran can be added to
                     // the queue for processing.
-                    elapseTime(used);
+                    elapseTime(used, (ManualTicker) null);
                     rescheduleTaskIfRequired(futureTasks, current);
                     futureTasks.addAll(tasks);
                     tasks.clear();
@@ -422,8 +429,12 @@ public class SerialScheduledExecutorService
                 }
                 else {
                     // Completely used the quantum, once we're done with this pass through the queue, may want need to add it back
+                    ticker = null;
                     rescheduleTaskIfRequired(toRequeue, current);
                 }
+            }
+            if (ticker != null) {
+                ticker.advance(quantum);
             }
         }
         finally {
@@ -442,8 +453,24 @@ public class SerialScheduledExecutorService
         }
     }
 
-    private static long toMillis(long quantum, TimeUnit timeUnit)
+    private static long toNanos(long quantum, TimeUnit timeUnit)
     {
-        return TimeUnit.MILLISECONDS.convert(quantum, timeUnit);
+        return TimeUnit.NANOSECONDS.convert(quantum, timeUnit);
+    }
+
+    private static class ManualTicker extends Ticker
+    {
+        private AtomicLong ticks = new AtomicLong(Integer.MAX_VALUE * 2L);
+
+        @Override
+        public long read()
+        {
+            return ticks.get();
+        }
+
+        public void advance(long nanos)
+        {
+            ticks.addAndGet(nanos);
+        }
     }
 }
