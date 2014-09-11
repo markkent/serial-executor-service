@@ -15,6 +15,7 @@
  */
 package org.logicalshift.concurrent;
 
+import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Ticker;
 import com.google.common.collect.ImmutableList;
@@ -318,6 +319,25 @@ public class SerialScheduledExecutorService
         }
 
         @Override
+        public int hashCode()
+        {
+            return Objects.hashCode(remainingDelayNanos);
+        }
+
+        @Override
+        public boolean equals(Object obj)
+        {
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null || getClass() != obj.getClass()) {
+                return false;
+            }
+            final SerialScheduledFuture other = (SerialScheduledFuture) obj;
+            return Objects.equal(this.remainingDelayNanos, other.remainingDelayNanos);
+        }
+
+        @Override
         public boolean cancel(boolean b)
         {
             return task.cancel(b);
@@ -397,6 +417,25 @@ public class SerialScheduledExecutorService
         {
             task = new FutureTask<Void>(runnable, null);
             remainingDelayNanos = recurringDelayNanos;
+        }
+
+        @Override
+        public int hashCode()
+        {
+            return Objects.hashCode(remainingDelayNanos);
+        }
+
+        @Override
+        public boolean equals(Object obj)
+        {
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null || getClass() != obj.getClass()) {
+                return false;
+            }
+            final SerialScheduledFuture other = (SerialScheduledFuture) obj;
+            return Objects.equal(this.remainingDelayNanos, other.remainingDelayNanos);
         }
     }
 
